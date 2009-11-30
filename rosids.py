@@ -1,6 +1,7 @@
 #!python
 
 import ctypes
+import io
 import optparse
 import os
 import os.path
@@ -41,18 +42,31 @@ def create_option_parser():
             dest="list_only", action="store_true", default=False)
     parser.add_option("--xj", "--exclude-junctions",
             dest="exclude_junctions", action="store_true", default=False)
-    parser.add_option("--exclude-by-regexp", dest="exclude_by_regexp",
+    parser.add_option("--xr", "--exclude-by-regexp", dest="exclude_by_regexp",
             action="append", type="string", metavar="PATTERN", default=[])
+    parser.add_option("--utf8-log",
+            dest="utf8_log", action="store_true", default=False)
+    parser.add_option("--utf8-error",
+            dest="utf8_error", action="store_true", default=False)
 
     return parser
 
 def create_walker(src, lnk, dst, options):
     walker = Walker()
-    walker.set_logger(Logger())
+    walker.set_logger(create_logger(src, lnk, dst, options))
     walker.set_comparator(Comparator())
     walker.set_filter(create_filter(src, lnk, dst, options))
     walker.set_commander(create_commander(src, lnk, dst, options))
     return walker
+
+def create_logger(src, lnk, dst, options):
+    out_encoding = "utf-8" if options.utf8_log else sys.stdout.encoding
+    out_stream = io.TextIOWrapper(sys.stdout.buffer,
+            encoding=out_encoding, errors="backslashreplace", newline="")
+    err_encoding = "utf-8" if options.utf8_error else sys.stdout.encoding
+    err_stream = io.TextIOWrapper(sys.stderr.buffer,
+            encoding=err_encoding, errors="backslashreplace", newline="")
+    return Logger().set_out_stream(out_stream).set_err_stream(err_stream)
 
 def create_filter(src, lnk, dst, options):
     filter = Filter()
@@ -121,6 +135,10 @@ class Walker:
 
 
 class Filter:
+    _destination = ""
+    _exclude_junctions = False
+    _exclude_by_regexp = []
+
     def set_destination(self, destination):
         self._destination = os.path.normpath(destination)
         return self
@@ -203,12 +221,22 @@ class Comparator:
 
 
 class Logger:
+    _out_stream = sys.stdout
+    _err_stream = sys.stderr
+
+    def set_out_stream(self, stream):
+        self._out_stream = stream
+        return self
+
+    def set_err_stream(self, stream):
+        self._err_stream = stream
+        return self
+
     def print(self, path, message):
-        # XXX throws UnicodeEncodeError
-        print(message, path, sep="\t")
+        print(message, path, sep="\t", file=self._out_stream)
 
     def error(self, path, message):
-        print(path, message, sep="\t", file=sys.stderr)
+        print(path, message, sep="\t", file=self._err_stream)
 
 
 if __name__ == "__main__":
