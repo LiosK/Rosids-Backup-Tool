@@ -1,4 +1,11 @@
 #!python
+"""
+Rosids - Create a Snapshot-style Backup with NTFS Hardlinks.
+
+Author:     LiosK <contact@mail.liosk.net>
+License:    The MIT License
+Copyright:  Copyright (c) 2009 LiosK.
+"""
 
 import ctypes
 import io
@@ -32,9 +39,9 @@ def main():
     walker.start_walk(src, lnk, dst)
 
 def create_option_parser():
-    """Defines command-line options, usage notes and so forth."""
+    """Define command-line options, usage notes and so forth."""
     usage = "%prog [OPTIONS] SOURCE LINK_SOURCE DESTINATION"
-    description = "Create Snapshot-style Backup with NTFS Hardlinks."
+    description = "Create a Snapshot-style Backup with NTFS Hardlinks."
 
     parser = optparse.OptionParser(usage=usage, description=description)
 
@@ -154,7 +161,7 @@ class Filter:
         return self
 
     def excludes_file(self, path):
-        """Returns True if the file is to be excluded."""
+        """Return True if the file is to be excluded."""
         for pattern in self._exclude_by_regexp:
             if pattern.search(path) is not None:
                 return True
@@ -162,7 +169,7 @@ class Filter:
         return False
 
     def excludes_dir(self, path):
-        """Returns True if the directory is to be excluded."""
+        """Return True if the directory is to be excluded."""
         path = os.path.normpath(path)
         if path == self._destination:
             return True
