@@ -13,7 +13,6 @@ import optparse
 import os
 import os.path
 import re
-import shutil
 import sys
 
 
@@ -121,7 +120,7 @@ class Walker:
             if os.path.isdir(src_item):
                 try:
                     if not self._filter.excludes_dir(src_item):
-                        self._commander.make_dir(dst_item)
+                        self._commander.copy_dir(src_item, dst_item)
                         self._visit(src_item, lnk_item, dst_item)
                 except Exception as e:
                     # log and skip
@@ -130,10 +129,10 @@ class Walker:
                 try:
                     if not self._filter.excludes_file(src_item):
                         if self._comparator.is_same_file(src_item, lnk_item):
-                            self._commander.link(lnk_item, dst_item)
+                            self._commander.link_file(lnk_item, dst_item)
                             self._logger.print(src_item, 'Link')
                         else:
-                            self._commander.copy(src_item, dst_item)
+                            self._commander.copy_file(src_item, dst_item)
                             self._logger.print(src_item, 'Copy')
 
                 except Exception as e:
@@ -188,31 +187,34 @@ class Filter:
 
 class RealCommander:
     """The polymorphic proxy in charge of filesystem-changing operations."""
-    def make_dir(self, path):
-        os.mkdir(path)
+    def copy_dir(self, src, dst):
+        os.mkdir(dst)   # TODO
 
     def make_dirs(self, path):
         os.makedirs(path)
 
-    def copy(self, src, dst):
-        shutil.copy2(src, dst)
+    def copy_file(self, src, dst):
+        if not ctypes.windll.kernel32.CopyFileW(src, dst, True):
+            raise ctypes.WinError() # XXX The message is not nice.
 
-    def link(self, src, dst):
-        ctypes.windll.kernel32.CreateHardLinkW(dst, src, None)
+
+    def link_file(self, src, dst):
+        if not ctypes.windll.kernel32.CreateHardLinkW(dst, src, None):
+            raise ctypes.WinError() # XXX The message is not nice.
 
 
 class NullCommander:
     """The empty commander used for the --list-only option."""
-    def make_dir(self, path):
+    def copy_dir(self, src, dst):
         pass
 
     def make_dirs(self, path):
         pass
 
-    def copy(self, src, dst):
+    def copy_file(self, src, dst):
         pass
 
-    def link(self, src, dst):
+    def link_file(self, src, dst):
         pass
 
 
