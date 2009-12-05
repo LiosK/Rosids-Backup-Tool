@@ -156,7 +156,10 @@ class Filter:
     def set_exclude_by_regexp(self, exclude_by_regexp):
         self._exclude_by_regexp = []
         for pattern in exclude_by_regexp:
-            self._exclude_by_regexp.append(re.compile(pattern))
+            if pattern.startswith("(?#casesensitive)"):
+                self._exclude_by_regexp.append(re.compile(pattern))
+            else:
+                self._exclude_by_regexp.append(re.compile(pattern, re.I))
         return self
 
     def excludes_file(self, path):
