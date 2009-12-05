@@ -188,7 +188,12 @@ class Filter:
 class RealCommander:
     """The polymorphic proxy in charge of filesystem-changing operations."""
     def copy_dir(self, src, dst):
-        os.mkdir(dst)   # TODO
+        os.mkdir(dst)
+        attib = ctypes.windll.kernel32.GetFileAttributesW(src)
+        if attib == -1:
+            raise ctypes.WinError()
+        elif not ctypes.windll.kernel32.SetFileAttributesW(dst, attib):
+            raise ctypes.WinError()
 
     def make_dirs(self, path):
         os.makedirs(path)
