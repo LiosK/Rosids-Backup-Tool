@@ -54,6 +54,8 @@ def create_option_parser():
             dest="utf8_log", action="store_true", default=False)
     parser.add_option("--utf8-error",
             dest="utf8_error", action="store_true", default=False)
+    parser.add_option("--verbose",
+            dest="verbose", action="store_true", default=False)
 
     return parser
 
@@ -72,7 +74,12 @@ def create_logger(src, lnk, dst, options):
     err_encoding = "utf-8" if options.utf8_error else sys.stdout.encoding
     err_stream = io.TextIOWrapper(sys.stderr.buffer,
             encoding=err_encoding, errors="backslashreplace", newline="")
-    return Logger().set_out_stream(out_stream).set_err_stream(err_stream)
+
+    logger = Logger()
+    logger.set_out_stream(out_stream)
+    logger.set_err_stream(err_stream)
+    logger.set_verbose(options.verbose)
+    return logger
 
 def create_filter(src, lnk, dst, options):
     filter = Filter()
@@ -106,38 +113,40 @@ class Walker:
         return self
 
     def start_walk(self, src, lnk, dst):
-        if not self._filter.excludes_dir(src):
+        if self._filter.excludes_dir(src):
+            self._logger.log_skip(src)
+        else:
             if not os.path.isdir(dst):
                 self._commander.make_dirs(dst)
             self._visit(src, lnk, dst)
 
     def _visit(self, src, lnk, dst):
+        self._logger.log_dir(src)
         for item in os.listdir(src):
             src_item = os.path.join(src, item)
             lnk_item = os.path.join(lnk, item)
             dst_item = os.path.join(dst, item)
 
-            if os.path.isdir(src_item):
-                try:
-                    if not self._filter.excludes_dir(src_item):
+            try:
+                if os.path.isdir(src_item):
+                    if self._filter.excludes_dir(src_item):
+                        self._logger.log_skip(src_item)
+                    else:
                         self._commander.copy_dir(src_item, dst_item)
                         self._visit(src_item, lnk_item, dst_item)
-                except Exception as e:
-                    # log and skip
-                    self._logger.error(src_item, e)
-            else:
-                try:
-                    if not self._filter.excludes_file(src_item):
+                else:
+                    if self._filter.excludes_file(src_item):
+                        self._logger.log_skip(src_item)
+                    else:
                         if self._comparator.is_same_file(src_item, lnk_item):
                             self._commander.link_file(lnk_item, dst_item)
-                            self._logger.print(src_item, 'Link')
+                            self._logger.log_link(src_item)
                         else:
                             self._commander.copy_file(src_item, dst_item)
-                            self._logger.print(src_item, 'Copy')
-
-                except Exception as e:
-                    # log and skip
-                    self._logger.error(src_item, e)
+                            self._logger.log_copy(src_item)
+            except Exception as e:
+                # log and skip
+                self._logger.error(src_item, e)
 
 
 class Filter:
@@ -238,8 +247,13 @@ class Comparator:
 
 
 class Logger:
+    _verbose = False
     _out_stream = sys.stdout
     _err_stream = sys.stderr
+
+    def set_verbose(self, verbose):
+        self._verbose = verbose
+        return self
 
     def set_out_stream(self, stream):
         self._out_stream = stream
@@ -249,8 +263,19 @@ class Logger:
         self._err_stream = stream
         return self
 
-    def print(self, path, message):
-        print(message, path, sep="\t", file=self._out_stream)
+    def log_link(self, path):
+        print("Link", path, sep="\t", file=self._out_stream)
+
+    def log_copy(self, path):
+        print("Copy", path, sep="\t", file=self._out_stream)
+
+    def log_skip(self, path):
+        if self._verbose:
+            print("Skip", path, sep="\t", file=self._out_stream)
+
+    def log_dir(self, path):
+        if self._verbose:
+            print("Dir.", path, sep="\t", file=self._out_stream)
 
     def error(self, path, message):
         print(path, message, sep="\t", file=self._err_stream)
