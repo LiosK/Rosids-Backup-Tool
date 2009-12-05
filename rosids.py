@@ -16,15 +16,15 @@ import re
 import sys
 
 
-def main():
+def main(args):
     """Application entry point."""
     parser = create_option_parser()
-    (options, args) = parser.parse_args()
+    (options, arguments) = parser.parse_args(args)
 
     # checking arguments
-    if len(args) != 3:
+    if len(arguments) != 3:
         parser.error("Incorrect number of arguments.")
-    (src, lnk, dst) = map(os.path.abspath, args)
+    (src, lnk, dst) = map(os.path.abspath, arguments)
 
     if not os.path.isdir(src):
         parser.error("SOURCE is not an existing directory.")
@@ -254,4 +254,4 @@ class Logger:
 
 
 if __name__ == "__main__":
-    main()
+    main(sys.argv[1:])
