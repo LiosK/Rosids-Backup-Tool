@@ -176,11 +176,11 @@ class Filter:
         return self
 
     def set_exclude_dir_junctions(self, value):
-        self._exclude_dir_junctions = value
+        self._exclude_dir_junctions = bool(value)
         return self
 
     def set_exclude_file_junctions(self, value):
-        self._exclude_file_junctions = value
+        self._exclude_file_junctions = bool(value)
         return self
 
     def set_exclude_by_regexp(self, value):
@@ -281,7 +281,7 @@ class Logger:
     _err_stream = sys.stderr
 
     def set_verbose(self, value):
-        self._verbose = value
+        self._verbose = bool(value)
         return self
 
     def set_out_stream(self, value):
