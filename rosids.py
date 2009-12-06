@@ -35,27 +35,40 @@ def main(args):
 
     # executing the main process
     walker = create_walker(src, lnk, dst, options)
-    walker.start_walk(src, lnk, dst)
+    try:
+        walker.start_walk(src, lnk, dst)
+    except Exception as e:
+        parser.error(e)
 
 def create_option_parser():
     """Define command-line options, usage notes and so forth."""
-    usage = "%prog [OPTIONS] SOURCE LINK_SOURCE DESTINATION"
-    description = "Create a Snapshot-style Backup with NTFS Hardlinks."
+    parser = optparse.OptionParser(
+            usage="%prog [OPTIONS] SOURCE LINK_SOURCE DESTINATION",
+            description="create a snapshot-style backup with NTFS hardlinks.")
 
-    parser = optparse.OptionParser(usage=usage, description=description)
+    parser.add_option("-l", "--list-only", dest="list_only",
+            action="store_true", default=False,
+            help="list only - don't copy or link anything")
 
-    parser.add_option("-l", "--list-only",
-            dest="list_only", action="store_true", default=False)
-    parser.add_option("--xj", "--exclude-junctions",
-            dest="exclude_junctions", action="store_true", default=False)
     parser.add_option("--xr", "--exclude-by-regexp", dest="exclude_by_regexp",
-            action="append", type="string", metavar="PATTERN", default=[])
-    parser.add_option("--utf8-log",
-            dest="utf8_log", action="store_true", default=False)
-    parser.add_option("--utf8-error",
-            dest="utf8_error", action="store_true", default=False)
-    parser.add_option("--verbose",
-            dest="verbose", action="store_true", default=False)
+            action="append", type="string", metavar="PATTERN", default=[],
+            help="exclude items matching regular expression PATTERN")
+    parser.add_option("--xj", "--exclude-junctions",
+            dest="exclude_junctions", action="store_true", default=False,
+            help="exclude junction points - same as --xjd --xjf")
+    parser.add_option("--xjd", "--exclude-dir-junctions",
+            dest="exclude_dir_junctions", action="store_true", default=False,
+            help="exclude junction points for directories")
+    parser.add_option("--xjf", "--exclude-file-junctions",
+            dest="exclude_file_junctions", action="store_true", default=False,
+            help="exclude junction points for files")
+
+    parser.add_option("--verbose", dest="verbose",
+            action="store_true", default=False, help="enable verbose log")
+    parser.add_option("--utf8-log", dest="utf8_log", action="store_true",
+            default=False, help="print log messages in UTF-8 encoding")
+    parser.add_option("--utf8-error", dest="utf8_error", action="store_true",
+            default=False, help="print error messages in UTF-8 encoding")
 
     return parser
 
@@ -84,8 +97,11 @@ def create_logger(src, lnk, dst, options):
 def create_filter(src, lnk, dst, options):
     filter = Filter()
     filter.set_destination(dst)
-    filter.set_exclude_junctions(options.exclude_junctions)
     filter.set_exclude_by_regexp(options.exclude_by_regexp)
+    filter.set_exclude_dir_junctions(
+            options.exclude_junctions or options.exclude_dir_junctions)
+    filter.set_exclude_file_junctions(
+            options.exclude_junctions or options.exclude_file_junctions)
     return filter
 
 def create_commander(src, lnk, dst, options):
@@ -96,20 +112,20 @@ def create_commander(src, lnk, dst, options):
 
 
 class Walker:
-    def set_logger(self, logger):
-        self._logger = logger
+    def set_logger(self, value):
+        self._logger = value
         return self
 
-    def set_comparator(self, comparator):
-        self._comparator = comparator
+    def set_comparator(self, value):
+        self._comparator = value
         return self
 
-    def set_filter(self, filter):
-        self._filter = filter
+    def set_filter(self, value):
+        self._filter = value
         return self
 
-    def set_commander(self, commander):
-        self._commander = commander
+    def set_commander(self, value):
+        self._commander = value
         return self
 
     def start_walk(self, src, lnk, dst):
@@ -151,20 +167,25 @@ class Walker:
 
 class Filter:
     _destination = ""
-    _exclude_junctions = False
+    _exclude_dir_junctions = False
+    _exclude_file_junctions = False
     _exclude_by_regexp = []
 
-    def set_destination(self, destination):
-        self._destination = os.path.normpath(destination)
+    def set_destination(self, value):
+        self._destination = os.path.normpath(value)
         return self
 
-    def set_exclude_junctions(self, exclude_junctions):
-        self._exclude_junctions = exclude_junctions
+    def set_exclude_dir_junctions(self, value):
+        self._exclude_dir_junctions = value
         return self
 
-    def set_exclude_by_regexp(self, exclude_by_regexp):
+    def set_exclude_file_junctions(self, value):
+        self._exclude_file_junctions = value
+        return self
+
+    def set_exclude_by_regexp(self, value):
         self._exclude_by_regexp = []
-        for pattern in exclude_by_regexp:
+        for pattern in value:
             if pattern.startswith("(?#casesensitive)"):
                 self._exclude_by_regexp.append(re.compile(pattern))
             else:
@@ -177,6 +198,9 @@ class Filter:
             if pattern.search(path) is not None:
                 return True
 
+        if self._exclude_file_junctions and self._is_junction(path):
+            return True
+
         return False
 
     def excludes_dir(self, path):
@@ -185,16 +209,21 @@ class Filter:
         if path == self._destination:
             return True
 
-        if self._exclude_junctions:
-            attib = ctypes.windll.kernel32.GetFileAttributesW(path)
-            if attib & 0x400: # 0x400 = FILE_ATTRIBUTE_REPARSE_POINT
-                return True
+        if self._exclude_dir_junctions and self._is_junction(path):
+            return True
 
         for pattern in self._exclude_by_regexp:
             if pattern.search(path) is not None:
                 return True
 
         return False
+
+    def _is_junction(self, path):
+        attib = ctypes.windll.kernel32.GetFileAttributesW(path)
+        if attib == -1:
+            raise ctypes.WinError()
+        else:
+            return bool(attib & 0x400)  # 0x400 = FILE_ATTRIBUTE_REPARSE_POINT
 
 
 class RealCommander:
@@ -251,16 +280,16 @@ class Logger:
     _out_stream = sys.stdout
     _err_stream = sys.stderr
 
-    def set_verbose(self, verbose):
-        self._verbose = verbose
+    def set_verbose(self, value):
+        self._verbose = value
         return self
 
-    def set_out_stream(self, stream):
-        self._out_stream = stream
+    def set_out_stream(self, value):
+        self._out_stream = value
         return self
 
-    def set_err_stream(self, stream):
-        self._err_stream = stream
+    def set_err_stream(self, value):
+        self._err_stream = value
         return self
 
     def log_link(self, path):
@@ -279,6 +308,8 @@ class Logger:
 
     def error(self, path, message):
         print(path, message, sep="\t", file=self._err_stream)
+        if self._verbose:
+            print("Err.", path, sep="\t", file=self._out_stream)
 
 
 if __name__ == "__main__":
