@@ -46,31 +46,39 @@ def create_option_parser():
             usage="%prog [OPTIONS] SOURCE LINK_SOURCE DESTINATION",
             description="create a snapshot-style backup with NTFS hardlinks.")
 
-    parser.add_option("-l", "--list-only", dest="list_only",
+    copy_group = optparse.OptionGroup(parser, "Copy Options")
+    copy_group.add_option("-l", "--list-only", dest="list_only",
             action="store_true", default=False,
             help="list only - don't copy or link anything")
+    parser.add_option_group(copy_group)
 
-    parser.add_option("--xr", "--exclude-by-regexp", dest="exclude_by_regexp",
-            action="append", type="string", metavar="PATTERN", default=[],
+    sel_group = optparse.OptionGroup(parser, "Selection Options")
+    sel_group.add_option("--xr", "--exclude-by-regexp",
+            dest="exclude_by_regexp", action="append", type="string",
+            metavar="PATTERN", default=[],
             help="exclude items matching regular expression PATTERN")
-    parser.add_option("--xj", "--exclude-junctions",
+    sel_group.add_option("--xj", "--exclude-junctions",
             dest="exclude_junctions", action="store_true", default=False,
             help="exclude junction points - same as --xjd --xjf")
-    parser.add_option("--xjd", "--exclude-dir-junctions",
+    sel_group.add_option("--xjd", "--exclude-dir-junctions",
             dest="exclude_dir_junctions", action="store_true", default=False,
             help="exclude junction points for directories")
-    parser.add_option("--xjf", "--exclude-file-junctions",
+    sel_group.add_option("--xjf", "--exclude-file-junctions",
             dest="exclude_file_junctions", action="store_true", default=False,
             help="exclude junction points for files")
+    parser.add_option_group(sel_group)
 
-    parser.add_option("--verbose", dest="verbose",
+    log_group = optparse.OptionGroup(parser, "Logging Options")
+    log_group.add_option("--verbose", dest="verbose",
             action="store_true", default=False, help="enable verbose log")
-    parser.add_option("--utf8-log", dest="utf8_log", action="store_true",
+    log_group.add_option("--utf8-log", dest="utf8_log", action="store_true",
             default=False, help="print log messages in UTF-8 encoding")
-    parser.add_option("--utf8-error", dest="utf8_error", action="store_true",
+    log_group.add_option("--utf8-error", dest="utf8_error", action="store_true",
             default=False, help="print error messages in UTF-8 encoding")
+    parser.add_option_group(log_group)
 
     return parser
+
 
 def create_walker(src, lnk, dst, options):
     walker = Walker()
@@ -192,17 +200,6 @@ class Filter:
                 self._exclude_by_regexp.append(re.compile(pattern, re.I))
         return self
 
-    def excludes_file(self, path):
-        """Return True if the file is to be excluded."""
-        for pattern in self._exclude_by_regexp:
-            if pattern.search(path) is not None:
-                return True
-
-        if self._exclude_file_junctions and self._is_junction(path):
-            return True
-
-        return False
-
     def excludes_dir(self, path):
         """Return True if the directory is to be excluded."""
         path = os.path.normpath(path)
@@ -218,22 +215,33 @@ class Filter:
 
         return False
 
+    def excludes_file(self, path):
+        """Return True if the file is to be excluded."""
+        for pattern in self._exclude_by_regexp:
+            if pattern.search(path) is not None:
+                return True
+
+        if self._exclude_file_junctions and self._is_junction(path):
+            return True
+
+        return False
+
     def _is_junction(self, path):
-        attib = ctypes.windll.kernel32.GetFileAttributesW(path)
-        if attib == -1:
+        attr = ctypes.windll.kernel32.GetFileAttributesW(path)
+        if attr == -1:
             raise ctypes.WinError()
         else:
-            return bool(attib & 0x400)  # 0x400 = FILE_ATTRIBUTE_REPARSE_POINT
+            return bool(attr & 0x400)  # 0x400 = FILE_ATTRIBUTE_REPARSE_POINT
 
 
 class RealCommander:
     """The polymorphic proxy in charge of filesystem-changing operations."""
     def copy_dir(self, src, dst):
         os.mkdir(dst)
-        attib = ctypes.windll.kernel32.GetFileAttributesW(src)
-        if attib == -1:
+        attr = ctypes.windll.kernel32.GetFileAttributesW(src)
+        if attr == -1:
             raise ctypes.WinError()
-        elif not ctypes.windll.kernel32.SetFileAttributesW(dst, attib):
+        elif not ctypes.windll.kernel32.SetFileAttributesW(dst, attr):
             raise ctypes.WinError()
 
     def make_dirs(self, path):
