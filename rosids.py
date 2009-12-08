@@ -23,15 +23,15 @@ def main(args):
 
     # checking arguments
     if len(arguments) != 3:
-        parser.error("Incorrect number of arguments.")
+        parser.error("incorrect number of arguments")
     (src, lnk, dst) = map(os.path.abspath, arguments)
 
     if not os.path.isdir(src):
-        parser.error("SOURCE is not an existing directory.")
+        parser.error("SOURCE is not an existing directory")
     if not os.path.isdir(lnk):
-        parser.error("LINK_SOURCE is not an existing directory.")
+        parser.error("LINK_SOURCE is not an existing directory")
     if os.path.isdir(dst) and len(os.listdir(dst)) > 0:
-        parser.error("DESTINATION is not an empty directory.")
+        parser.error("DESTINATION is not an empty directory")
 
     # executing the main process
     walker = create_walker(src, lnk, dst, options)
@@ -44,7 +44,7 @@ def create_option_parser():
     """Define command-line options, usage notes and so forth."""
     parser = optparse.OptionParser(
             usage="%prog [OPTIONS] SOURCE LINK_SOURCE DESTINATION",
-            description="create a snapshot-style backup with NTFS hardlinks.")
+            description="create a snapshot-style backup with NTFS hardlinks")
 
     copy_group = optparse.OptionGroup(parser, "Copy Options")
     copy_group.add_option("-l", "--list-only", dest="list_only",
