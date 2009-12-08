@@ -59,13 +59,13 @@ def create_option_parser():
             help="exclude items matching regular expression PATTERN")
     sel_group.add_option("--xj", "--exclude-junctions",
             dest="exclude_junctions", action="store_true", default=False,
-            help="exclude junction points - same as --xjd --xjf")
+            help="exclude junctions (reparse points) - same as --xjd --xjf")
     sel_group.add_option("--xjd", "--exclude-dir-junctions",
             dest="exclude_dir_junctions", action="store_true", default=False,
-            help="exclude junction points for directories")
+            help="exclude junctions (reparse points) for directories")
     sel_group.add_option("--xjf", "--exclude-file-junctions",
             dest="exclude_file_junctions", action="store_true", default=False,
-            help="exclude junction points for files")
+            help="exclude junctions (reparse points) for files")
     parser.add_option_group(sel_group)
 
     log_group = optparse.OptionGroup(parser, "Logging Options")
@@ -206,8 +206,8 @@ class Filter:
         if path == self._destination:
             return True
 
-        if self._exclude_dir_junctions and self._is_junction(path):
-            return True
+        if self._exclude_dir_junctions and self._has_attr(path, 0x400):
+            return True # 0x400 = FILE_ATTRIBUTE_REPARSE_POINT
 
         for pattern in self._exclude_by_regexp:
             if pattern.search(path) is not None:
@@ -217,21 +217,21 @@ class Filter:
 
     def excludes_file(self, path):
         """Return True if the file is to be excluded."""
+        if self._exclude_file_junctions and self._has_attr(path, 0x400):
+            return True # 0x400 = FILE_ATTRIBUTE_REPARSE_POINT
+
         for pattern in self._exclude_by_regexp:
             if pattern.search(path) is not None:
                 return True
 
-        if self._exclude_file_junctions and self._is_junction(path):
-            return True
-
         return False
 
-    def _is_junction(self, path):
-        attr = ctypes.windll.kernel32.GetFileAttributesW(path)
-        if attr == -1:
+    def _has_attr(self, path, given_attr):
+        file_attr = ctypes.windll.kernel32.GetFileAttributesW(path)
+        if file_attr == -1: # -1 = INVALID_FILE_ATTRIBUTES
             raise ctypes.WinError()
         else:
-            return bool(attr & 0x400)  # 0x400 = FILE_ATTRIBUTE_REPARSE_POINT
+            return bool(file_attr & given_attr)
 
 
 class RealCommander:
