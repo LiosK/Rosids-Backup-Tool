@@ -339,23 +339,32 @@ class Logger:
         return self
 
     def log_link(self, path):
-        print("Link", path, sep="\t", file=self._out_stream)
+        print("Link", self._get_size(path), path,
+                sep="\t", file=self._out_stream)
 
     def log_copy(self, path):
-        print("Copy", path, sep="\t", file=self._out_stream)
+        print("Copy", self._get_size(path), path,
+                sep="\t", file=self._out_stream)
 
     def log_skip(self, path):
         if self._verbose:
-            print("Skip", path, sep="\t", file=self._out_stream)
+            print("Skip", "", path, sep="\t", file=self._out_stream)
 
     def log_dir(self, path):
         if self._verbose:
-            print("Dir.", path, sep="\t", file=self._out_stream)
+            print("Dir.", "", path, sep="\t", file=self._out_stream)
 
     def error(self, path, message):
         print(path, message, sep="\t", file=self._err_stream)
         if self._verbose:
-            print("Err.", path, sep="\t", file=self._out_stream)
+            print("Err.", "", path, sep="\t", file=self._out_stream)
+
+    def _get_size(self, path):
+        """Return the size of file, suppressing errors."""
+        try:
+            return os.path.getsize(path)
+        except OSError:
+            return -1
 
 
 # utility functions
