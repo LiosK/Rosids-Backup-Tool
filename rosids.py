@@ -226,23 +226,15 @@ class Filter:
 
         return False
 
-    def _has_attr(self, path, given_attr):
-        file_attr = ctypes.windll.kernel32.GetFileAttributesW(path)
-        if file_attr == -1: # -1 = INVALID_FILE_ATTRIBUTES
-            raise ctypes.WinError()
-        else:
-            return bool(file_attr & given_attr)
+    def _has_attr(self, path, attr):
+        return bool(attr & get_file_attributes(path))
 
 
 class RealCommander:
     """The polymorphic proxy in charge of filesystem-changing operations."""
     def copy_dir(self, src, dst):
         os.mkdir(dst)
-        attr = ctypes.windll.kernel32.GetFileAttributesW(src)
-        if attr == -1:
-            raise ctypes.WinError()
-        elif not ctypes.windll.kernel32.SetFileAttributesW(dst, attr):
-            raise ctypes.WinError()
+        set_file_attributes(dst, get_file_attributes(src))
 
     def make_dirs(self, path):
         os.makedirs(path)
@@ -318,6 +310,19 @@ class Logger:
         print(path, message, sep="\t", file=self._err_stream)
         if self._verbose:
             print("Err.", path, sep="\t", file=self._out_stream)
+
+
+# utility functions
+def get_file_attributes(path):
+    attributes = ctypes.windll.kernel32.GetFileAttributesW(path)
+    if attributes == -1:    # -1 = INVALID_FILE_ATTRIBUTES
+        raise ctypes.WinError()
+    else:
+        return attributes
+
+def set_file_attributes(path, attributes):
+    if not ctypes.windll.kernel32.SetFileAttributesW(path, attributes):
+        raise ctypes.WinError()
 
 
 if __name__ == "__main__":
