@@ -46,13 +46,28 @@ def create_option_parser():
             usage="%prog [OPTIONS] SOURCE LINK_SOURCE DESTINATION",
             description="create a snapshot-style backup with NTFS hardlinks")
 
+    def attr_option_handler(option, opt_str, value, parser):
+        if any(c not in option.metavar for c in value.upper()):
+            m = "{0} option requires one or more of characters in [{1}]"
+            raise optparse.OptionValueError(m.format(opt_str, option.metavar))
+        else:
+            setattr(parser.values, option.dest, value.upper())
+
     copy_group = optparse.OptionGroup(parser, "Copy Options")
     copy_group.add_option("-l", "--list-only", dest="list_only",
             action="store_true", default=False,
             help="list only - don't copy or link anything")
+    copy_group.add_option("--afa", "--add-file-attr", dest="add_file_attr",
+            type="string", metavar="RASHNT", default="",
+            action="callback", callback=attr_option_handler,
+            help="add the given attributes to copied files")
     parser.add_option_group(copy_group)
 
     sel_group = optparse.OptionGroup(parser, "Selection Options")
+    sel_group.add_option("--xfa", "--exclude-file-by-attr",
+            dest="exclude_file_by_attr", type="string", metavar="RASHCNETO",
+            default="", action="callback", callback=attr_option_handler,
+            help="exclude files with any of the given attributes")
     sel_group.add_option("--xr", "--exclude-by-regexp",
             dest="exclude_by_regexp", action="append", type="string",
             metavar="PATTERN", default=[],
@@ -106,6 +121,7 @@ def create_filter(src, lnk, dst, options):
     filter = Filter()
     filter.set_destination(dst)
     filter.set_exclude_by_regexp(options.exclude_by_regexp)
+    filter.set_exclude_file_by_attr(options.exclude_file_by_attr)
     filter.set_exclude_dir_junctions(
             options.exclude_junctions or options.exclude_dir_junctions)
     filter.set_exclude_file_junctions(
@@ -116,7 +132,10 @@ def create_commander(src, lnk, dst, options):
     if options.list_only:
         return NullCommander()
     else:
-        return RealCommander()
+        commander = RealCommander()
+        if options.add_file_attr:
+            commander.set_file_attr_to_add(options.add_file_attr)
+        return commander
 
 
 class Walker:
@@ -178,18 +197,25 @@ class Filter:
     _exclude_dir_junctions = False
     _exclude_file_junctions = False
     _exclude_by_regexp = []
+    _exclude_file_by_attr = 0
+    _dir_attr_to_exclude = 0
+    _file_attr_to_exclude = 0
 
     def set_destination(self, value):
         self._destination = os.path.normpath(value)
         return self
 
+    def set_exclude_file_by_attr(self, value):
+        self._exclude_file_by_attr = str_attrs_to_bits(value)
+        return self._update_attr_to_exclude()
+
     def set_exclude_dir_junctions(self, value):
         self._exclude_dir_junctions = bool(value)
-        return self
+        return self._update_attr_to_exclude()
 
     def set_exclude_file_junctions(self, value):
         self._exclude_file_junctions = bool(value)
-        return self
+        return self._update_attr_to_exclude()
 
     def set_exclude_by_regexp(self, value):
         self._exclude_by_regexp = []
@@ -206,8 +232,9 @@ class Filter:
         if path == self._destination:
             return True
 
-        if self._exclude_dir_junctions and self._has_attr(path, 0x400):
-            return True # 0x400 = FILE_ATTRIBUTE_REPARSE_POINT
+        if 0 < self._dir_attr_to_exclude:
+            if self._has_attr(path, self._dir_attr_to_exclude):
+                return True
 
         for pattern in self._exclude_by_regexp:
             if pattern.search(path) is not None:
@@ -217,8 +244,9 @@ class Filter:
 
     def excludes_file(self, path):
         """Return True if the file is to be excluded."""
-        if self._exclude_file_junctions and self._has_attr(path, 0x400):
-            return True # 0x400 = FILE_ATTRIBUTE_REPARSE_POINT
+        if 0 < self._file_attr_to_exclude:
+            if self._has_attr(path, self._file_attr_to_exclude):
+                return True
 
         for pattern in self._exclude_by_regexp:
             if pattern.search(path) is not None:
@@ -229,9 +257,25 @@ class Filter:
     def _has_attr(self, path, attr):
         return bool(attr & get_file_attributes(path))
 
+    def _update_attr_to_exclude(self):
+        self._dir_attr_to_exclude = 0
+        if self._exclude_dir_junctions:
+            self._dir_attr_to_exclude |= 0x400  # FILE_ATTRIBUTE_REPARSE_POINT
+        self._file_attr_to_exclude = self._exclude_file_by_attr
+        if self._exclude_file_junctions:
+            self._file_attr_to_exclude |= 0x400 # FILE_ATTRIBUTE_REPARSE_POINT
+        return self
+
+
 
 class RealCommander:
     """The polymorphic proxy in charge of filesystem-changing operations."""
+    _file_attr_to_add = 0
+
+    def set_file_attr_to_add(self, value):
+        self._file_attr_to_add = str_attrs_to_bits(value)
+        return self
+
     def copy_dir(self, src, dst):
         os.mkdir(dst)
         set_file_attributes(dst, get_file_attributes(src))
@@ -242,7 +286,9 @@ class RealCommander:
     def copy_file(self, src, dst):
         if not ctypes.windll.kernel32.CopyFileW(src, dst, True):
             raise ctypes.WinError() # XXX The message is not nice.
-
+        if 0 < self._file_attr_to_add:
+            set_file_attributes(dst,
+                    self._file_attr_to_add | get_file_attributes(dst))
 
     def link_file(self, src, dst):
         if not ctypes.windll.kernel32.CreateHardLinkW(dst, src, None):
@@ -313,6 +359,17 @@ class Logger:
 
 
 # utility functions
+def str_attrs_to_bits(str_attrs):
+    attr_map = { "R": 0x1, "H": 0x2, "S": 0x4, "A": 0x20,
+            "T": 0x100, "C": 0x800, "O": 0x1000, "N": 0x2000, "E": 0x4000 }
+    bits = 0
+    for c in str_attrs.upper():
+        if c not in attr_map:
+            return -1
+        else:
+            bits |= attr_map[c]
+    return bits
+
 def get_file_attributes(path):
     attributes = ctypes.windll.kernel32.GetFileAttributesW(path)
     if attributes == -1:    # -1 = INVALID_FILE_ATTRIBUTES
