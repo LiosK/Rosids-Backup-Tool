@@ -99,16 +99,16 @@ def _create_walker(src, lnk, dst, options):
     return walker
 
 def _create_logger(src, lnk, dst, options):
-    out_encoding = "utf-8" if options.utf8_log else sys.stdout.encoding
-    out_stream = io.TextIOWrapper(sys.stdout.buffer,
-            encoding=out_encoding, errors="backslashreplace", newline="")
+    log_encoding = "utf-8" if options.utf8_log else sys.stdout.encoding
+    log_writer = io.TextIOWrapper(sys.stdout.buffer,
+            encoding=log_encoding, errors="backslashreplace", newline="")
     err_encoding = "utf-8" if options.utf8_error else sys.stdout.encoding
-    err_stream = io.TextIOWrapper(sys.stderr.buffer,
+    err_writer = io.TextIOWrapper(sys.stderr.buffer,
             encoding=err_encoding, errors="backslashreplace", newline="")
 
     logger = rosids.logger.Logger()
-    logger.set_out_stream(out_stream)
-    logger.set_err_stream(err_stream)
+    logger.set_log_writer(log_writer)
+    logger.set_err_writer(err_writer)
     logger.set_verbose(options.verbose)
     return logger
 
@@ -131,4 +131,3 @@ def _create_commander(src, lnk, dst, options):
         if options.add_file_attr:
             commander.set_file_attr_to_add(options.add_file_attr)
         return commander
-
